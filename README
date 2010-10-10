@@ -1,0 +1,21 @@
+README for Location
+
+To use Location you need:
+	
+	- a running wlan card which can be accessed by iwlist
+	- Perl (at least 5.10)
+		- libconfig-tiny-perl (Config::Tiny)		
+		- libgetopt-long-descriptive-perl (Getopt::Long)
+		- libtext-trim-perl (Text::Trim)
+		- libarray-diff-perl (Array:Diff)
+	- sudo
+
+In order to use this piece of code you have to mask iwlist in /etc/sudoers
+so that this can be runned without enterning the password.
+Example for this line:	user	ALL=(root) NOPASSWD: /sbin/iwlist
+
+The configuration is stored in the file in your home directory and is called
+
+	.locationconf
+
+
