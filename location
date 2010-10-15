@@ -134,7 +134,7 @@ sub get {
             }
             else {
 
-     # Here we have to proove whether at least 50% of the networks are available
+# Here we have to proove whether at least 50% of the networks are available
                 if ( ( $confmaccount - $diffcount ) >= ( $confmaccount / 2 ) ) {
 
 # confmacccount minus diffcount is the amount of matching mac addresses
