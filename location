@@ -15,7 +15,7 @@ use Data::Dumper;
 
 STDOUT->autoflush(1);    #workaround so that one can use print without \n
 
-my $VERSION    = '0.2';
+my $VERSION    = '0.3';
 my $configpath = "$ENV{HOME}/.locationconf";
 my $config     = Config::Tiny->new;
 
@@ -23,10 +23,11 @@ my $config     = Config::Tiny->new;
 my @add;
 my $delete;
 my $show;
+my $showall;
 my $scans = 1;
 my $delay;
 my $get;
-my $update;
+my @update;
 my $accuracy = '';
 my $verbose;
 
@@ -34,7 +35,9 @@ if ( -e $configpath ) {
     $config   = Config::Tiny->read($configpath);
     $scans    = $config->{_}->{scans};
     $accuracy = $config->{_}->{accuracy};
-	if($config->{_}->{version} lt $VERSION) { $config->{_}->{version}  = $VERSION; }
+    if ( $config->{_}->{version} lt $VERSION ) {
+        $config->{_}->{version} = $VERSION;
+    }
 }
 else {
     $config->{_}->{version}  = $VERSION;
@@ -44,29 +47,30 @@ else {
 }
 
 GetOptions(
-    'h|help'     => sub { exec( 'perldoc', '-F', $0 ) },
-    'a|add=s{3}' => \@add,
-    'd|delete=s' => \$delete,
-    's|show=s'   => \$show,
-	'update:s'	 => \$update,
-    'scans=i'    => \$scans,
-    'delay=i'    => \$delay,
-    'g|get=s'    => \$get,
-    'accuracy=s' => \$accuracy,
+    'h|help'      => sub { exec( 'perldoc', '-F', $0 ) },
+    'a|add=s{3}'  => \@add,
+    'd|delete=s'  => \$delete,
+    's|show=s'    => \$show,
+    'showall'     => \$showall,
+    'update:s{2}' => \@update,
+    'scans=i'     => \$scans,
+    'delay=i'     => \$delay,
+    'g|get=s'     => \$get,
+    'accuracy=s'  => \$accuracy,
     'v|version' => sub { say 'Location version ' . $VERSION; exit 0; },
     'verbose' => \$verbose,
 );
 
 if ( $scans < 1 ) { $scans = 1; }
 
-if    (@add)               { add(); }
-elsif ( defined($delete) ) { delentry(); }
-elsif ( defined($show) )   { show(); }
-elsif ( defined($get) )    { get(); }
-elsif ( defined($update) ) { update(); }
+if    (@add)                { add(); }
+elsif (@update)             { update(); }
+elsif ( defined($delete) )  { delentry(); }
+elsif ( defined($show) )    { show(); }
+elsif ( defined($showall) ) { showall(); }
+elsif ( defined($get) )     { get(); }
 else {
-    say
-"usage: location [--help] [--add <name> <address> <station>] [--delete <name>] [--update <name>] [--show <name>] [--scans <number>] [--delay <time in seconds>] [--get <name|address|station|all>] [--accuracy <ok|best>] [--verbose]";
+    say "usage: location [--help] [--add <name> <address> <station>] [--delete <name>] [--update <name> <mode>] [--show <name>] [--showall] [--scans <number>] [--delay <time in seconds>] [--get <name|address|station|all>] [--accuracy <ok|best>] [--verbose]";
 }
 
 sub add {
@@ -75,11 +79,10 @@ sub add {
     $config->{$name}->{address} = $add[1];
     $config->{$name}->{station} = $add[2];
     $config->write($configpath);
-	if ( defined($verbose) ) { 
-		my $tmp = $config->{$name}->{mac};
-		$tmp =~ s/\|/ /g;
-		say "Added location \"$name\" to internal database!\nI found this mac addresses: $tmp";
-	}
+    if ( defined($verbose) ) {
+        say "Added location \"$name\" to internal database!\nI found this mac addresses: "
+          . implodemacs( $config->{$name}->{mac} );
+    }
 }
 
 sub delentry {
@@ -97,40 +100,98 @@ sub delentry {
 sub show {
     my $name = $show;
     if ( $config->{$name} ) {
-        say "Information for $name";
+        say "=== $name ===";
+        say "Macs   : " . implodemacs( $config->{$name}->{mac} );
         say "Address: $config->{$name}->{address}";
         say "Station: $config->{$name}->{station}";
-        say "Mac-Addresses: $config->{$name}->{mac}";
     }
     else {
         say "$name not found in internal database!";
     }
 }
 
+sub showall {
+    while ( my ( $name, $section ) = each %{$config} ) {
+        if ( $name ne "_" ) {
+            say "=== $name ===";
+            say "Macs   : " . implodemacs( $section->{mac} );
+            say "Address: " . $section->{address};
+            say "Station: " . $section->{station};
+        }
+    }
+}
+
 sub get {
-	my @locs = getlocation();
-	if(@locs){
-		foreach my $loc (@locs) {
-			if ( $config->{$loc} ){
-				if ( ( $get eq "name" ) xor( $get eq "all" ) ) { say $loc; }
-				if ( ( $get eq "address" ) xor( $get eq "all" ) ) {
-					say $config->{$loc}->{address};
-				}
-				if ( ( $get eq "station" ) xor( $get eq "all" ) ) {
-					say $config->{$loc}->{station};
-				}
-			}
-		}
-	}else{
-		say "No Location found, try to change the accuracy or add this location.";#
-		exit 1;
-	}
+    my @locs = getlocation();
+    if (@locs) {
+        foreach my $loc (@locs) {
+            if ( $config->{$loc} ) {
+                if ( ( $get eq "name" ) xor( $get eq "all" ) ) { say $loc; }
+                if ( ( $get eq "address" ) xor( $get eq "all" ) ) {
+                    say $config->{$loc}->{address};
+                }
+                if ( ( $get eq "station" ) xor( $get eq "all" ) ) {
+                    say $config->{$loc}->{station};
+                }
+            }
+        }
+    }
+    else {
+        say "No Location found, try to change the accuracy or add this location.";
+        exit 1;
+    }
+}
+
+sub update {
+    if ( scalar(@update) != 2 ) {
+        say "--update needs 2 arguments. The name of the location to update and the update mode. See --help for more information!";
+        exit 1;
+    }
+    my $location = $update[0];
+    my $mode     = $update[1];
+    if ( $location eq "current" ) {
+        my @locations = getlocation();
+        if ( !@locations ) {
+            say "No location found which can be updated. Do use another name than \"current\"!";
+            exit 1;
+        }
+        $location = shift(@locations);
+    }
+    if ( !$config->{$location} ) {
+        say "The location you want to update does not exist. Try to use --add or check your spelling!";
+        exit 1;
+    }
+    if ( ( $mode eq "a" ) or ( $mode eq "add" ) ) {
+        my @confmacs = split( /\|/, $config->{$location}->{mac} );
+        my @localmacs = do_scans($scans);
+        foreach my $locmac (@localmacs) {
+            push( @confmacs, $locmac );
+        }
+        my %machash = map { $_, 1 } @confmacs;
+        my @newmacs = keys %machash;
+        $config->{$location}->{mac} = join( "|", @newmacs );
+        if ( defined($verbose) ) {
+            say "Updated location named \"$location\" and the macs are now: "
+              . implodemacs( $config->{$location}->{mac} );
+        }
+    }
+    elsif ( ( $mode eq "o" ) or ( $mode eq "override" ) ) {
+        $config->{$location}->{mac} = join( "|", do_scans($scans) );
+        if ( defined($verbose) ) {
+            say
+              "Updated location named \"$location\" and the new macs are now: "
+              . implodemacs( $config->{$location}->{mac} );
+        }
+    }
 }
 
 sub getlocation {
-	my @returns;
+    my @returns;
     my @localmacs = do_scans($scans);
-	if ( defined($verbose) ) { say "Macs found which are now used for comparison:"; print Dumper @localmacs; }
+    if ( defined($verbose) ) {
+        say "Macs found which are now used for comparison:";
+        print Dumper @localmacs;
+    }
     my @possiblelocations;
     while ( my ( $name, $section ) = each %{$config} ) {
         if ( $name ne "_" ) {
@@ -152,24 +213,17 @@ sub getlocation {
             my $confmaccount  = scalar(@confmacs);
             if ( $accuracy eq "ok" ) {
                 if ( $diffcount < $confmaccount ) {
-
-					push( @returns, $loc);
-
+                    push( @returns, $loc );
                 }
-            } else {
-
-# Here we have to proove whether at least 50% of the networks are available
+            }
+            else {
                 if ( ( $confmaccount - $diffcount ) >= ( $confmaccount / 2 ) ) {
-
-# confmacccount minus diffcount is the amount of matching mac addresses
-# if this is greater or equal than the half of confmaccount at least 50% matches
-                	push( @returns, $loc);
-				
-				}
+                    push( @returns, $loc );
+                }
             }
         }
     }
-	return @returns;
+    return @returns;
 }
 
 sub do_scans {
@@ -179,21 +233,31 @@ sub do_scans {
         push( @macs, scan_environment() );
         if ( defined($delay) and ( $i != $times ) ) {
             for ( my $j = $delay ; $j >= 1 ; $j-- ) {
-                if ( defined($verbose) ) { print "Scan [$i/$times] | Delay [$j]    \r"; }
+                if ( defined($verbose) ) {
+                    print "Scan [$i/$times] | Delay [$j]    \r";
+                }
                 sleep 1;
             }
         }
     }
-	if ( defined($verbose) ) { print "Successfully scanned environment for Access Points\n"; }
+    if ( defined($verbose) ) {
+        print "Successfully scanned environment for Access Points\n";
+    }
     my %hash = map { $_, 1 } @macs;
     return keys %hash;
 }
 
 sub scan_environment {
-    my @output
-      = qx(sudo iwlist scan 2> /dev/null | grep -i 'Address' | cut -d ":" -f2-);
+    my @output =
+      qx(sudo iwlist scan 2> /dev/null | grep -i 'Address' | cut -d ":" -f2-);
     trim @output;
     return @output;
+}
+
+sub implodemacs {
+    my $macs = shift(@_);
+    $macs =~ s/\|/ /g;
+    return $macs;
 }
 
 __END__
@@ -241,11 +305,13 @@ is found in the internal database.
 Show all information about the given I<name> even if you are not at this
 location.
 
-=item B<--update> I<name>
+=item B<--update> I<name> I<mode>
 
 Updates the location. You can see which mac addresses were added when the 
-verbose flag is set. If I<name> is not set, the current location will be 
-determined first and then the database is updated.
+verbose flag is set. If I<name> equals to "current" the current location will be 
+determined first and then the database is updated. The I<mode> can be either 
+"a" or "add" to add the found macs to the existing set of mac addresses or use 
+"o" or "override" to override the existing macs for I<name> with the found mac addresses.
 
 =item B<--scans> I<number>
 
