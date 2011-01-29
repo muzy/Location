@@ -15,7 +15,7 @@ use Data::Dumper;
 
 STDOUT->autoflush(1);    #workaround so that one can use print without \n
 
-my $VERSION    = '0.1';
+my $VERSION    = '0.2';
 my $configpath = "$ENV{HOME}/.locationconf";
 my $config     = Config::Tiny->new;
 
@@ -26,6 +26,7 @@ my $show;
 my $scans = 1;
 my $delay;
 my $get;
+my $update;
 my $accuracy = '';
 my $verbose;
 
@@ -33,6 +34,7 @@ if ( -e $configpath ) {
     $config   = Config::Tiny->read($configpath);
     $scans    = $config->{_}->{scans};
     $accuracy = $config->{_}->{accuracy};
+	if($config->{_}->{version} lt $VERSION) { $config->{_}->{version}  = $VERSION; }
 }
 else {
     $config->{_}->{version}  = $VERSION;
@@ -46,6 +48,7 @@ GetOptions(
     'a|add=s{3}' => \@add,
     'd|delete=s' => \$delete,
     's|show=s'   => \$show,
+	'update:s'	 => \$update,
     'scans=i'    => \$scans,
     'delay=i'    => \$delay,
     'g|get=s'    => \$get,
@@ -60,9 +63,10 @@ if    (@add)               { add(); }
 elsif ( defined($delete) ) { delentry(); }
 elsif ( defined($show) )   { show(); }
 elsif ( defined($get) )    { get(); }
+elsif ( defined($update) ) { update(); }
 else {
     say
-"usage: location [--help] [--add <name> <address> <station>] [--delete <name>] [--show <name>] [--scans <number>] [--delay <time in seconds>] [--get <name|address|station|all>] [--accuracy <ok|best>] [--verbose]";
+"usage: location [--help] [--add <name> <address> <station>] [--delete <name>] [--update <name>] [--show <name>] [--scans <number>] [--delay <time in seconds>] [--get <name|address|station|all>] [--accuracy <ok|best>] [--verbose]";
 }
 
 sub add {
@@ -71,6 +75,11 @@ sub add {
     $config->{$name}->{address} = $add[1];
     $config->{$name}->{station} = $add[2];
     $config->write($configpath);
+	if ( defined($verbose) ) { 
+		my $tmp = $config->{$name}->{mac};
+		$tmp =~ s/\|/ /g;
+		say "Added location \"$name\" to internal database!\nI found this mac addresses: $tmp";
+	}
 }
 
 sub delentry {
@@ -99,6 +108,27 @@ sub show {
 }
 
 sub get {
+	my @locs = getlocation();
+	if(@locs){
+		foreach my $loc (@locs) {
+			if ( $config->{$loc} ){
+				if ( ( $get eq "name" ) xor( $get eq "all" ) ) { say $loc; }
+				if ( ( $get eq "address" ) xor( $get eq "all" ) ) {
+					say $config->{$loc}->{address};
+				}
+				if ( ( $get eq "station" ) xor( $get eq "all" ) ) {
+					say $config->{$loc}->{station};
+				}
+			}
+		}
+	}else{
+		say "No Location found, try to change the accuracy or add this location.";#
+		exit 1;
+	}
+}
+
+sub getlocation {
+	my @returns;
     my @localmacs = do_scans($scans);
 	if ( defined($verbose) ) { say "Macs found which are now used for comparison:"; print Dumper @localmacs; }
     my @possiblelocations;
@@ -123,55 +153,38 @@ sub get {
             if ( $accuracy eq "ok" ) {
                 if ( $diffcount < $confmaccount ) {
 
-                    # Then we have at least one matching mac address
-                    if ( ( $get eq "name" ) xor( $get eq "all" ) ) { say $loc; }
-                    if ( ( $get eq "address" ) xor( $get eq "all" ) ) {
-                        say $config->{$loc}->{address};
-                    }
-                    if ( ( $get eq "station" ) xor( $get eq "all" ) ) {
-                        say $config->{$loc}->{station};
-                    }
+					push( @returns, $loc);
+
                 }
-            }
-            else {
+            } else {
 
 # Here we have to proove whether at least 50% of the networks are available
                 if ( ( $confmaccount - $diffcount ) >= ( $confmaccount / 2 ) ) {
 
 # confmacccount minus diffcount is the amount of matching mac addresses
 # if this is greater or equal than the half of confmaccount at least 50% matches
-                    if ( ( $get eq "name" ) xor( $get eq "all" ) ) { say $loc; }
-                    if ( ( $get eq "address" ) xor( $get eq "all" ) ) {
-                        say $config->{$loc}->{address};
-                    }
-                    if ( ( $get eq "station" ) xor( $get eq "all" ) ) {
-                        say $config->{$loc}->{station};
-                    }
-                }
+                	push( @returns, $loc);
+				
+				}
             }
         }
     }
-    else {
-        say "Error: Could not determine current location!";
-        exit 1;
-    }
+	return @returns;
 }
 
 sub do_scans {
     my $times = shift(@_);
     my @macs  = ();
     for ( my $i = 1 ; $i <= $times ; $i++ ) {
-        if ( defined($verbose) ) { say "Scan $i of $times."; }
         push( @macs, scan_environment() );
         if ( defined($delay) and ( $i != $times ) ) {
-            if ( defined($verbose) ) { print "Delay until next scan: "; }
             for ( my $j = $delay ; $j >= 1 ; $j-- ) {
-                if ( defined($verbose) ) { print "$j "; }
+                if ( defined($verbose) ) { print "Scan [$i/$times] | Delay [$j]    \r"; }
                 sleep 1;
             }
-            if ( defined($verbose) ) { print "\n"; }
         }
     }
+	if ( defined($verbose) ) { print "Successfully scanned environment for Access Points\n"; }
     my %hash = map { $_, 1 } @macs;
     return keys %hash;
 }
@@ -192,7 +205,7 @@ Location - A tool which can discover your location with wlan!
 =head1 SYNOPSIS
 
 B<location> [--help] [--add I<name> I<address> I<station>] [--delete I<name>] 
-[--show I<name>] [--scans I<number>] [--delay I<time in seconds>] 
+[--show I<name>] [--update I<name>] [--scans I<number>] [--delay I<time in seconds>] 
 [--get I<name|address|station|all>] [--accuracy I<ok|best>] [--verbose]
 
 =head1 DESCRIPTION
@@ -227,6 +240,12 @@ is found in the internal database.
 
 Show all information about the given I<name> even if you are not at this
 location.
+
+=item B<--update> I<name>
+
+Updates the location. You can see which mac addresses were added when the 
+verbose flag is set. If I<name> is not set, the current location will be 
+determined first and then the database is updated.
 
 =item B<--scans> I<number>
 
@@ -264,5 +283,5 @@ See the .locationconf in your home-directory. It will be added after first start
 
 =head1 AUTHOR
 
-Copyright (C) 2010 by Sebastian Muszytowski E<lt>muzy@muzybot.deE<gt>
+Copyright (C) 2010,2011 by Sebastian Muszytowski E<lt>sebastian@muszytowski.netE<gt>
 
