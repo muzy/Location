@@ -35,9 +35,7 @@ if ( -e $configpath ) {
     $config   = Config::Tiny->read($configpath);
     $scans    = $config->{_}->{scans};
     $accuracy = $config->{_}->{accuracy};
-    if ( $config->{_}->{version} lt $VERSION ) {
-        $config->{_}->{version} = $VERSION;
-    }
+    $config->{_}->{version} = $VERSION;
 }
 else {
     $config->{_}->{version}  = $VERSION;
@@ -57,9 +55,9 @@ GetOptions(
     'delay=i'     => \$delay,
     'g|get=s'     => \$get,
     'accuracy=s'  => \$accuracy,
-    'v|version' => sub { say 'Location version ' . $VERSION; exit 0; },
+    'v|version' => sub { say "Location version $VERSION by Sebastian Muszytowski"; exit 0; },
     'verbose' => \$verbose,
-);
+) or exit 1;
 
 if ( $scans < 1 ) { $scans = 1; }
 
@@ -208,16 +206,15 @@ sub getlocation {
         foreach my $loc (@locations) {
             my @confmacs = split( /\|/, $config->{$loc}->{mac} );
             my $diff          = Array::Diff->diff( \@localmacs, \@confmacs );
-            my $diffcount     = $diff->count;
             my $localmaccount = scalar(@localmacs);
             my $confmaccount  = scalar(@confmacs);
             if ( $accuracy eq "ok" ) {
-                if ( $diffcount < $confmaccount ) {
+                if ( $diff->count < $confmaccount ) {
                     push( @returns, $loc );
                 }
             }
             else {
-                if ( ( $confmaccount - $diffcount ) >= ( $confmaccount / 2 ) ) {
+                if ( ( $confmaccount - $diff->count ) >= ( $confmaccount / 2 ) ) {
                     push( @returns, $loc );
                 }
             }
