@@ -141,10 +141,6 @@ sub get {
 }
 
 sub update {
-    if ( scalar(@update) != 2 ) {
-        say "--update needs 2 arguments. The name of the location to update and the update mode. See --help for more information!";
-        exit 1;
-    }
     my $location = $update[0];
     my $mode     = $update[1];
     if ( $location eq "current" ) {
@@ -159,7 +155,10 @@ sub update {
         say "The location you want to update does not exist. Try to use --add or check your spelling!";
         exit 1;
     }
-    if ( ( $mode eq "a" ) or ( $mode eq "add" ) ) {
+	#
+	# Append to the existing Macs
+	#
+	if ( ( $mode eq "a" ) or ( $mode eq "add" ) ) {
         my @confmacs = split( /\|/, $config->{$location}->{mac} );
         my @localmacs = do_scans($scans);
         foreach my $locmac (@localmacs) {
@@ -173,7 +172,10 @@ sub update {
               . implodemacs( $config->{$location}->{mac} );
         }
     }
-    elsif ( ( $mode eq "o" ) or ( $mode eq "override" ) ) {
+	#
+	# Override the existing Macs
+	#
+	elsif ( ( $mode eq "o" ) or ( $mode eq "override" ) ) {
         $config->{$location}->{mac} = join( "|", do_scans($scans) );
         if ( defined($verbose) ) {
             say
@@ -214,7 +216,8 @@ sub getlocation {
                 }
             }
             else {
-                if ( ( $confmaccount - $diff->count ) >= ( $confmaccount / 2 ) ) {
+				# 50% are there
+				if ( ( $confmaccount - $diff->count ) >= ( $confmaccount / 2 ) ) {
                     push( @returns, $loc );
                 }
             }
